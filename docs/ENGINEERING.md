@@ -184,8 +184,8 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | | Piece | I should see |
 |---|---|---|
 | 0c1 | `backend/main.py` with `GET /health`, run locally by uvicorn | `http://localhost:8000/health` shows `{"status":"ok"}`, and `/docs` lists the endpoint. **Passed 10 Nov:** `/health` as expected, `/` a 404 `{"detail":"Not Found"}`, `/docs` lists `GET /health`; CORS headers only for listed origins |
-| 0c2 | The same on Railway, Root Directory `backend` | `/health` on the Railway URL shows the same |
-| 0c3 | `api.playsketchrelay.com` points at Railway | `https://api.playsketchrelay.com/health` answers |
+| 0c2 | The same on Railway, Root Directory `backend` | `/health` on the Railway URL shows the same. **Passed 10 Nov** at https://play-sketch-relay.up.railway.app: Python 3.12.16, `/health` and the title as local, CORS headers only for listed origins, http redirects to https |
+| 0c3 | `api.playsketchrelay.com` points at Railway | `https://api.playsketchrelay.com/health` answers. **Passed 10 Nov:** a CNAME `api` and Railway's `_railway-verify` TXT in Vercel DNS; the browser gets `{"status":"ok"}` over HTTPS. A domain bought on Vercel has a wildcard `*` record to Vercel, so a resolver that looked up `api` before the CNAME existed keeps Vercel's answer for a while |
 | 0c4 | The home page asks the API; CORS lets the front end's origins in | The live home page says the API is up. **Local 10 Nov:** `localhost:3001` shows "API: up"; live needs 0c3 and `NEXT_PUBLIC_API_URL` set on Vercel before a build |
 
 ### Step 1, in pieces
