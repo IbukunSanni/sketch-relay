@@ -175,7 +175,7 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | | Piece | Check |
 |---|---|---|
 | 0a | Next.js app, a plain home page | `npm run dev` shows it at localhost. **Passed 9 Nov:** the page renders, no console errors, `tsc` and ESLint clean |
-| 0b | GitHub repo, `frontend/` imported into Vercel | The same page at the live URL, redeployed on push. **Live 10 Nov** at https://www.playsketchrelay.com: `/` and `/draw` served by Vercel over HTTPS, the canvas 800 × 600, no console errors. Redeploy on push is checked by the next push |
+| 0b | GitHub repo, `frontend/` imported into Vercel | The same page at the live URL, redeployed on push. **Live 10 Nov** at https://www.playsketchrelay.com: `/` and `/draw` served by Vercel over HTTPS, the canvas 800 × 600, no console errors. **Passed 10 Nov:** the push of `87991f1` redeployed it; the live home page has the new API status line |
 | 0c | `backend/`: FastAPI with `GET /health`, deployed on Railway | The live page shows the API is up |
 | 0d | Supabase project, one test row; the API reads it | The live page shows the row |
 

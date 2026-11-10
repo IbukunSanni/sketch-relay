@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Drawn level, tip left, then turned so the tip points down-left. -->
+  <g transform="rotate(-45 32 32)">
+    <path d="M-9.5 32 L8.5 25 L8.5 39 Z" fill="#F3CF9C"/>
+    <path d="M-9.5 32 L-3.5 29.67 L-3.5 34.33 Z" fill="#3F3F46"/>
+    <rect x="8.5" y="25" width="42" height="4.67" fill="#FFC34D"/>
+    <rect x="8.5" y="29.67" width="42" height="4.66" fill="#F7A21B"/>
+    <rect x="8.5" y="34.33" width="42" height="4.67" fill="#E07B00"/>
+    <rect x="50.5" y="25" width="8" height="14" fill="#CBD0D8"/>
+    <path d="M53.2 25 V39 M55.8 25 V39" stroke="#8B929C" stroke-width="1.2"/>
+    <path d="M58.5 25 H64 Q66.5 25 66.5 27.5 V36.5 Q66.5 39 64 39 H58.5 Z" fill="#F28C82"/>
+    <path d="M-9.5 32 L8.5 25 H64 Q66.5 25 66.5 27.5 V36.5 Q66.5 39 64 39 H8.5 Z"
+          fill="none" stroke="#3A2A1E" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+</svg>
