@@ -50,6 +50,8 @@ live URL, and the reveal shows every chain in the right order.
 | D6 | ~~Railway only if needed; no AWS~~ | | Superseded by D8 |
 | D7 | The GitHub repo is **public** | Portfolio work, like the raytracer and the globe; no secrets ever reach git | Agreed 9 Nov |
 | D8 | **Back end: Python and FastAPI on Railway.** One repo: `frontend/` (Next.js, deployed by Vercel) and `backend/` (FastAPI, deployed by Railway) | My choice: a Python backend to build that skill, and Python's image libraries ready for later features. **The cost:** two services and two deploys, CORS, checking Supabase tokens in Python, and types written twice (TypeScript and Pydantic); about a day more inside 10–15 Nov | Agreed 9 Nov |
+| D9 | **The domain is `playsketchrelay.com`**, bought on Vercel. `www.playsketchrelay.com` serves the front end and the bare domain redirects to it. The API will live at `api.playsketchrelay.com` | `sketchrelay.com` was taken (registered 22 Sep 2026 by someone else). The name may still change; I accept that risk | Agreed 10 Nov |
+| D10 | **Python tooling:** Python 3.12, pinned in `backend/.python-version`; a `.venv` and pip; `requirements.txt` with exact versions of `fastapi` and `uvicorn`. The app is `app` in `backend/main.py` | The plainest setup that deploys as-is: Railway's builder reads `.python-version` (it would pick 3.13 otherwise, not what runs here) and, with FastAPI and uvicorn listed, starts `uvicorn main:app` on Railway's port by itself, so no Railway config file | Proposed |
 
 ---
 
@@ -91,7 +93,13 @@ frontend/              Next.js → Vercel
     draw/page.tsx      /draw, the canvas on its own
   components/          UI pieces that routes use
     canvas.tsx         the drawing canvas; reused by the draw step in step 4
-backend/               FastAPI → Railway, from step 0c
+    api-status.tsx     asks the API's /health from the browser, shows up or down
+backend/               FastAPI → Railway
+  main.py              the app: `app`, CORS, and the routers it includes
+  routes/              one module per group of endpoints
+    health.py          GET /health
+  requirements.txt     exact versions; Railway installs from it
+  .python-version      3.12; Railway reads it
 docs/ENGINEERING.md    this file
 ```
 
@@ -167,9 +175,18 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | | Piece | Check |
 |---|---|---|
 | 0a | Next.js app, a plain home page | `npm run dev` shows it at localhost. **Passed 9 Nov:** the page renders, no console errors, `tsc` and ESLint clean |
-| 0b | GitHub repo, `frontend/` imported into Vercel | The same page at the live URL, redeployed on push |
+| 0b | GitHub repo, `frontend/` imported into Vercel | The same page at the live URL, redeployed on push. **Live 10 Nov** at https://www.playsketchrelay.com: `/` and `/draw` served by Vercel over HTTPS, the canvas 800 × 600, no console errors. Redeploy on push is checked by the next push |
 | 0c | `backend/`: FastAPI with `GET /health`, deployed on Railway | The live page shows the API is up |
 | 0d | Supabase project, one test row; the API reads it | The live page shows the row |
+
+0c, smaller:
+
+| | Piece | I should see |
+|---|---|---|
+| 0c1 | `backend/main.py` with `GET /health`, run locally by uvicorn | `http://localhost:8000/health` shows `{"status":"ok"}`, and `/docs` lists the endpoint. **Passed 10 Nov:** `/health` as expected, `/` a 404 `{"detail":"Not Found"}`, `/docs` lists `GET /health`; CORS headers only for listed origins |
+| 0c2 | The same on Railway, Root Directory `backend` | `/health` on the Railway URL shows the same |
+| 0c3 | `api.playsketchrelay.com` points at Railway | `https://api.playsketchrelay.com/health` answers |
+| 0c4 | The home page asks the API; CORS lets the front end's origins in | The live home page says the API is up. **Local 10 Nov:** `localhost:3001` shows "API: up"; live needs 0c3 and `NEXT_PUBLIC_API_URL` set on Vercel before a build |
 
 ### Step 1, in pieces
 
@@ -195,9 +212,18 @@ next.
 Accounts, a public gallery, moderation, chat, voting, replaying the strokes,
 sound, custom brushes, AI prompts, GIF export, joining Iron Canvas.
 
+## Stretch goals
+
+After the MVP, and only if the 4 December list picks them.
+
+- **WebGPU** for textured custom brushes, replaying strokes, or effects in
+  the reveal. The MVP draws with the Canvas 2D API, which the browser already
+  runs on the GPU. WebGPU comes in only where Canvas 2D is measured too slow,
+  such as a brush that stamps thousands of dabs per stroke.
+
 ## Open
 
-- The name.
+- The name: Sketch Relay for now, with the domain to match (D9).
 - When the host leaves (MVP: the game carries on, and the next seat can move
   the reveal on).
 - Timer lengths (start at 30 s to write or describe, 90 s to draw).
