@@ -20,7 +20,8 @@ own.
 ## Done when
 
 Four people on four devices finish one full game from a shared link on the
-live URL, and the reveal shows every chain in the right order.
+live URL, and the reveal shows every chain in the right order. A drawing made
+with a pen shows its pressure in the reveal (D11).
 
 ---
 
@@ -52,6 +53,7 @@ live URL, and the reveal shows every chain in the right order.
 | D8 | **Back end: Python and FastAPI on Railway.** One repo: `frontend/` (Next.js, deployed by Vercel) and `backend/` (FastAPI, deployed by Railway) | My choice: a Python backend to build that skill, and Python's image libraries ready for later features. **The cost:** two services and two deploys, CORS, checking Supabase tokens in Python, and types written twice (TypeScript and Pydantic); about a day more inside 10–15 Nov | Agreed 9 Nov |
 | D9 | **The domain is `playsketchrelay.com`**, bought on Vercel. `www.playsketchrelay.com` serves the front end and the bare domain redirects to it. The API will live at `api.playsketchrelay.com` | `sketchrelay.com` was taken (registered 22 Sep 2026 by someone else). The name may still change; I accept that risk | Agreed 10 Nov |
 | D10 | **Python tooling:** Python 3.12, pinned in `backend/.python-version`; a `.venv` and pip; `requirements.txt` with exact versions of `fastapi` and `uvicorn`. The app is `app` in `backend/main.py` | The plainest setup that deploys as-is: Railway's builder reads `.python-version` (it would pick 3.13 otherwise, not what runs here) and, with FastAPI and uvicorn listed, starts `uvicorn main:app` on Railway's port by itself, so no Railway config file | Proposed |
+| D11 | **Pressure sensitivity is a must-have.** On any device that reports pen pressure, pressing harder draws a thicker line, in every draw step. It is never cut to save time. A mouse or a finger draws at an even width; no pressure is faked from stroke speed | My key feature, as an artist. Not everyone has a pen or tablet, but the game must reward the people who do. Even width keeps real pressure a pen's reward, and needs no smoothing | Agreed 10 Nov |
 
 ---
 
@@ -94,6 +96,8 @@ frontend/              Next.js → Vercel
   components/          UI pieces that routes use
     canvas.tsx         the drawing canvas; reused by the draw step in step 4
     api-status.tsx     asks the API's /health from the browser, shows up or down
+  lib/                 logic with no React in it
+    drawing.ts         strokes, pressure to width, painting
 backend/               FastAPI → Railway
   main.py              the app: `app`, CORS, and the routers it includes
   routes/              one module per group of endpoints
@@ -163,7 +167,7 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | # | Step | Done when | Status |
 |---|---|---|---|
 | 0 | Skeleton: web and API both live, reading from Supabase | The live page shows a row from Supabase, fetched through the API on Railway | **In progress** |
-| 1 | **The canvas**, local only: pen with pressure, a small palette, three sizes, undo, clear, export PNG | I can draw with mouse, touch and pen, and pressure changes the line | **Next** |
+| 1 | **The canvas**, local only: pen with pressure, a small palette, three sizes, undo, clear, export PNG | I can draw with mouse, touch and pen, and pressure changes the line | **Built 10 Nov**; waits on my real pen and phone check |
 | 2 | **Rooms**: create one (code and link), join with a name, the lobby updates live | Two browsers see each other join and leave | |
 | 3 | **The game, text only**: every step is text, with the rotation, timers and advance | Three browsers play a full text-only game; the rotation has unit tests | |
 | 4 | **Drawing steps**: the canvas in the draw steps, PNG to Storage, the next player sees it | A full game alternates write, draw, describe | |
@@ -176,7 +180,7 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 |---|---|---|
 | 0a | Next.js app, a plain home page | `npm run dev` shows it at localhost. **Passed 9 Nov:** the page renders, no console errors, `tsc` and ESLint clean |
 | 0b | GitHub repo, `frontend/` imported into Vercel | The same page at the live URL, redeployed on push. **Live 10 Nov** at https://www.playsketchrelay.com: `/` and `/draw` served by Vercel over HTTPS, the canvas 800 × 600, no console errors. **Passed 10 Nov:** the push of `87991f1` redeployed it; the live home page has the new API status line |
-| 0c | `backend/`: FastAPI with `GET /health`, deployed on Railway | The live page shows the API is up |
+| 0c | `backend/`: FastAPI with `GET /health`, deployed on Railway | The live page shows the API is up. **Passed 10 Nov**, in four pieces below |
 | 0d | Supabase project, one test row; the API reads it | The live page shows the row |
 
 0c, smaller:
@@ -186,7 +190,7 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | 0c1 | `backend/main.py` with `GET /health`, run locally by uvicorn | `http://localhost:8000/health` shows `{"status":"ok"}`, and `/docs` lists the endpoint. **Passed 10 Nov:** `/health` as expected, `/` a 404 `{"detail":"Not Found"}`, `/docs` lists `GET /health`; CORS headers only for listed origins |
 | 0c2 | The same on Railway, Root Directory `backend` | `/health` on the Railway URL shows the same. **Passed 10 Nov** at https://play-sketch-relay.up.railway.app: Python 3.12.16, `/health` and the title as local, CORS headers only for listed origins, http redirects to https |
 | 0c3 | `api.playsketchrelay.com` points at Railway | `https://api.playsketchrelay.com/health` answers. **Passed 10 Nov:** a CNAME `api` and Railway's `_railway-verify` TXT in Vercel DNS; the browser gets `{"status":"ok"}` over HTTPS. A domain bought on Vercel has a wildcard `*` record to Vercel, so a resolver that looked up `api` before the CNAME existed keeps Vercel's answer for a while |
-| 0c4 | The home page asks the API; CORS lets the front end's origins in | The live home page says the API is up. **Local 10 Nov:** `localhost:3001` shows "API: up"; live needs 0c3 and `NEXT_PUBLIC_API_URL` set on Vercel before a build |
+| 0c4 | The home page asks the API; CORS lets the front end's origins in | The live home page says the API is up. **Passed 10 Nov:** `NEXT_PUBLIC_API_URL` set on Vercel, then `8bb6db9` built with it; the live home page fetches `https://api.playsketchrelay.com/health` and shows "API: up", no console errors |
 
 ### Step 1, in pieces
 
@@ -197,13 +201,18 @@ next.
 | | Piece | I should see |
 |---|---|---|
 | 1a | A page with an 800 × 600 white canvas | A white box with a border at `/draw`; the home page unchanged. **Passed 9 Nov:** 800 × 600 pixels shown at 800 × 600, white, 1 px border; home unchanged |
-| 1b | A dot where I press | A dot under the pointer on every click or tap |
-| 1c | Lines while I drag | Continuous lines; a fast flick stays connected |
-| 1d | Pressure sets the width | A pen thickens as I press harder; a mouse stays even |
-| 1e | Six colours, three sizes | The next stroke uses what I picked |
-| 1f | Clear | A blank canvas |
-| 1g | Undo | The last stroke disappears, one per press |
-| 1h | Export PNG | A downloaded file that matches the canvas |
+| 1b | A dot where I press | A dot under the pointer on every click or tap. **Passed 10 Nov:** a click aimed at (200, 150) drew an 8 px dot centred at (201, 150); a tap on a phone-width canvas (342 px shown) landed at (400, 299) for (400, 300) |
+| 1c | Lines while I drag | Continuous lines; a fast flick stays connected. **Passed 10 Nov:** a drag drew one line with no gaps; the canvas has `touch-action: none` so a finger draws instead of scrolling |
+| 1d | Pressure sets the width | A pen thickens as I press harder; a mouse stays even. **Passed 10 Nov** with simulated pen events: pressure 0.2 → 3 px, 1.0 → 16 px; mouse and touch at 0.5 → 8 px. A press reported as pressure 0 draws at 0.5 |
+| 1e | Six colours, three sizes | The next stroke uses what I picked. **Passed 10 Nov:** red large → 18 px dot of `#e53935`, blue small → 3 px of `#1e88e5` |
+| 1f | Clear | A blank canvas. **Passed 10 Nov:** no ink pixels left |
+| 1g | Undo | The last stroke disappears, one per press. **Passed 10 Nov:** two presses removed the last two strokes in order; the rest repainted pixel for pixel |
+| 1h | Export PNG | A downloaded file that matches the canvas. **Passed 10 Nov:** `sketch-relay.png`, 800 × 600, 0 pixels different from the canvas, none transparent |
+
+1b–1h were written by Claude on 10 Nov, at my request to finish step 1
+quickly; I review them. The strokes live in `frontend/lib/drawing.ts`
+(plain functions, no React) and the component in `canvas.tsx`. Still mine
+to check: a real pen and a real phone.
 
 ---
 
