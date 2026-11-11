@@ -1,4 +1,5 @@
 import ApiStatus from "@/components/api-status";
+import DbStatus from "@/components/db-status";
 
 export default function Home() {
   return (
@@ -8,6 +9,7 @@ export default function Home() {
         Write a prompt, draw what you&apos;re given, describe what you see.
       </p>
       <ApiStatus />
+      <DbStatus />
     </main>
   );
 }

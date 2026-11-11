@@ -54,6 +54,7 @@ with a pen shows its pressure in the reveal (D11).
 | D9 | **The domain is `playsketchrelay.com`**, bought on Vercel. `www.playsketchrelay.com` serves the front end and the bare domain redirects to it. The API will live at `api.playsketchrelay.com` | `sketchrelay.com` was taken (registered 22 Sep 2026 by someone else). The name may still change; I accept that risk | Agreed 10 Nov |
 | D10 | **Python tooling:** Python 3.12, pinned in `backend/.python-version`; a `.venv` and pip; `requirements.txt` with exact versions of `fastapi` and `uvicorn`. The app is `app` in `backend/main.py` | The plainest setup that deploys as-is: Railway's builder reads `.python-version` (it would pick 3.13 otherwise, not what runs here) and, with FastAPI and uvicorn listed, starts `uvicorn main:app` on Railway's port by itself, so no Railway config file | Proposed |
 | D11 | **Pressure sensitivity is a must-have.** On any device that reports pen pressure, pressing harder draws a thicker line, in every draw step. It is never cut to save time. A mouse or a finger draws at an even width; no pressure is faked from stroke speed | My key feature, as an artist. Not everyone has a pen or tablet, but the game must reward the people who do. Even width keeps real pressure a pen's reward, and needs no smoothing | Agreed 10 Nov |
+| D12 | **The API reaches Supabase through the `supabase` Python client**, over HTTPS, with the secret key, on the server only. The project is **SketchRelay** in the Aibeekoding organisation, in us-east-2 (Ohio), near Railway's US East | One client for tables and Storage: an update filtered on the current step is the conditional advance step 3 needs (one SQL `UPDATE … WHERE step = r`, so two requests can't both win), and its signed upload URLs are D5. No database connection pool to run on Railway. Nearby regions keep each API-to-database call short | Agreed 10 Nov |
 
 ---
 
@@ -96,12 +97,15 @@ frontend/              Next.js → Vercel
   components/          UI pieces that routes use
     canvas.tsx         the drawing canvas; reused by the draw step in step 4
     api-status.tsx     asks the API's /health from the browser, shows up or down
+    db-status.tsx      asks the API's /smoke, shows the row it read from Supabase
   lib/                 logic with no React in it
     drawing.ts         strokes, pressure to width, painting
 backend/               FastAPI → Railway
   main.py              the app: `app`, CORS, and the routers it includes
+  db.py                the one Supabase client, made on first use
   routes/              one module per group of endpoints
     health.py          GET /health
+    smoke.py           GET /smoke, reads the test row
   requirements.txt     exact versions; Railway installs from it
   .python-version      3.12; Railway reads it
 docs/ENGINEERING.md    this file
@@ -192,6 +196,15 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | 0c3 | `api.playsketchrelay.com` points at Railway | `https://api.playsketchrelay.com/health` answers. **Passed 10 Nov:** a CNAME `api` and Railway's `_railway-verify` TXT in Vercel DNS; the browser gets `{"status":"ok"}` over HTTPS. A domain bought on Vercel has a wildcard `*` record to Vercel, so a resolver that looked up `api` before the CNAME existed keeps Vercel's answer for a while |
 | 0c4 | The home page asks the API; CORS lets the front end's origins in | The live home page says the API is up. **Passed 10 Nov:** `NEXT_PUBLIC_API_URL` set on Vercel, then `8bb6db9` built with it; the live home page fetches `https://api.playsketchrelay.com/health` and shows "API: up", no console errors |
 
+0d, smaller:
+
+| | Piece | I should see |
+|---|---|---|
+| 0d1 | SketchRelay's URL and secret key in `backend/.env` and Railway's Variables | `git status` never lists the key. The URL's subdomain is SketchRelay's project ref; I have two Supabase organisations, and keys from the other one point at a different database |
+| 0d2 | Table `smoke_test` with one row, row-level security on | The row in the Table Editor. With no policies, the browser's publishable key can't read it; the secret key can |
+| 0d3 | `GET /smoke` reads the row with the secret key | `localhost:8000/smoke` and `api.playsketchrelay.com/smoke` return its message. **Local passed 10 Nov:** `{"message":"Hello from Supabase"}`, after `.env` was moved from another organisation's project to SketchRelay. uvicorn reads `.env` only when a worker starts, so a key change needs a restart |
+| 0d4 | The home page shows it | The live home page shows "Database: Hello from Supabase". **Local passed 10 Nov** at `localhost:3001`; live needs SketchRelay's keys in Railway and a push |
+
 ### Step 1, in pieces
 
 The canvas is `frontend/components/canvas.tsx`; `frontend/app/draw/page.tsx`
@@ -238,3 +251,7 @@ After the MVP, and only if the 4 December list picks them.
 - Timer lengths (start at 30 s to write or describe, 90 s to draw).
 - Whether Supabase's free plan has room for a second project next to Iron
   Canvas, or this needs its own account.
+- Supabase Pro ($25 a month) only if the free plan's limits bite, such as an
+  idle project being paused before a demo. Its custom domain ($10 a month
+  more) isn't worth it: players never see the Supabase URL, and with
+  anonymous sign-in there's no "continue to … supabase.co" screen.
