@@ -44,9 +44,9 @@ with a pen shows its pressure in the reveal (D11).
 | # | Decision | Why | Status |
 |---|---|---|---|
 | D1 | **Front end:** Next.js (App Router), TypeScript and Tailwind on **Vercel**. **Data:** **Supabase** for Postgres, Realtime and Storage. GitHub for the code | My strongest tools | Agreed 9 Nov |
-| D2 | **The server decides, the browser asks.** Every change to game state goes through the API (D8); a browser never writes game state | One source of truth; a player can't skip a step or write into another chain | Proposed |
+| D2 | **The server decides, the browser asks.** Every change to game state goes through the API (D8); a browser never writes game state | One source of truth; a player can't skip a step or write into another chain | Agreed 10 Nov |
 | D3 | ~~No long-running server: stored deadlines and a conditional update~~ | Written for serverless functions. D8 brings a long-running server, so where timers live is settled at step 3: in memory (simple, lost on restart) or as stored deadlines (survives restarts) | Reopened by D8 |
-| D4 | **No accounts:** Supabase anonymous sign-in; the API checks Supabase's token on every request | Joining a party game should take a name, nothing more, while the server still knows who is who | Proposed |
+| D4 | **No accounts:** Supabase anonymous sign-in; the API checks Supabase's token on every request | Joining a party game should take a name, nothing more, while the server still knows who is who | Agreed 10 Nov |
 | D5 | **Drawings are PNGs** in Storage, one per entry. The API checks it's your turn and returns a signed upload URL for that one path; the browser uploads straight to Storage | The server still decides, but image bytes never pass through it | Proposed |
 | D6 | ~~Railway only if needed; no AWS~~ | | Superseded by D8 |
 | D7 | The GitHub repo is **public** | Portfolio work, like the raytracer and the globe; no secrets ever reach git | Agreed 9 Nov |
@@ -55,6 +55,10 @@ with a pen shows its pressure in the reveal (D11).
 | D10 | **Python tooling:** Python 3.12, pinned in `backend/.python-version`; a `.venv` and pip; `requirements.txt` with exact versions of `fastapi` and `uvicorn`. The app is `app` in `backend/main.py` | The plainest setup that deploys as-is: Railway's builder reads `.python-version` (it would pick 3.13 otherwise, not what runs here) and, with FastAPI and uvicorn listed, starts `uvicorn main:app` on Railway's port by itself, so no Railway config file | Proposed |
 | D11 | **Pressure sensitivity is a must-have.** On any device that reports pen pressure, pressing harder draws a thicker line, in every draw step. It is never cut to save time. A mouse or a finger draws at an even width; no pressure is faked from stroke speed | My key feature, as an artist. Not everyone has a pen or tablet, but the game must reward the people who do. Even width keeps real pressure a pen's reward, and needs no smoothing | Agreed 10 Nov |
 | D12 | **The API reaches Supabase through the `supabase` Python client**, over HTTPS, with the secret key, on the server only. The project is **SketchRelay** in the Aibeekoding organisation, in us-east-2 (Ohio), near Railway's US East | One client for tables and Storage: an update filtered on the current step is the conditional advance step 3 needs (one SQL `UPDATE … WHERE step = r`, so two requests can't both win), and its signed upload URLs are D5. No database connection pool to run on Railway. Nearby regions keep each API-to-database call short | Agreed 10 Nov |
+| D13 | **Room codes are 4 letters** from A–Z without I and O (24 letters, 331,776 codes). The API picks one at random and tries again if it's taken. The link is `/room/CODE` | Short enough to read aloud across a room; no I or O, so nobody types 1 or 0 | Agreed 10 Nov |
+| D14 | **The API checks a player's token by asking Supabase** (`auth.get_user(token)`) on every request that needs one; no valid token, 401 | The simplest correct check, with no key handling in Python. It costs one call to Supabase per request; verifying the token locally against Supabase's public keys (JWKS) can replace it if that's too slow | Agreed 10 Nov |
+| D15 | **The lobby is Realtime Presence** on channel `room:CODE`: each browser announces its name and seat, and the list is whoever is connected now. Seats live in `players`, written only by the API | Presence drops a player who closes the tab, so "see each other join and leave" needs no extra code, and the API stays the only writer (D2). **The cost:** the channel is public, so anyone with the code could show up in the list under any name; nothing they announce reaches the database | Agreed 10 Nov |
+| D16 | **SQL lives in the repo**, as numbered files in `supabase/migrations/`, run in SketchRelay's SQL Editor | The database can be rebuilt from git, and each file names the project it belongs to | Agreed 10 Nov |
 
 ---
 
@@ -92,22 +96,35 @@ flowchart LR
 ```
 frontend/              Next.js → Vercel
   app/                 routes only: a folder per URL
-    page.tsx           /
+    page.tsx           /: create a room, or type a code to join one
     draw/page.tsx      /draw, the canvas on its own
+    room/[code]/page.tsx  /room/CODE, the lobby
   components/          UI pieces that routes use
     canvas.tsx         the drawing canvas; reused by the draw step in step 4
     api-status.tsx     asks the API's /health from the browser, shows up or down
     db-status.tsx      asks the API's /smoke, shows the row it read from Supabase
+    player-id.tsx      the start of this browser's anonymous user id
+    name-form.tsx      a name and one button; create and join both use it
+    create-room.tsx    name → POST /rooms → the new room's lobby
+    join-code.tsx      a typed code → that room's lobby
+    lobby.tsx          the room's code and invite link; the name form until seated
+    who-is-here.tsx    the live list of players (Realtime Presence, D15)
   lib/                 logic with no React in it
     drawing.ts         strokes, pressure to width, painting
+    supabase.ts        the browser's Supabase client; anonymous sign-in, once
+    api.ts             calls the API with the player's token
 backend/               FastAPI → Railway
   main.py              the app: `app`, CORS, and the routers it includes
   db.py                the one Supabase client, made on first use
+  auth.py              the token check (D14): `UserId`, or a 401
   routes/              one module per group of endpoints
     health.py          GET /health
     smoke.py           GET /smoke, reads the test row
+    me.py              GET /me
+    rooms.py           create, read and join rooms; codes and seats
   requirements.txt     exact versions; Railway installs from it
   .python-version      3.12; Railway reads it
+supabase/migrations/   numbered SQL files, run in order in SketchRelay (D16)
 docs/ENGINEERING.md    this file
 ```
 
@@ -142,12 +159,24 @@ runs is D3, settled at step 3.
 
 ### Data
 
-A sketch; it's settled at step 2 and step 3.
+**Built** (step 2, `supabase/migrations/0001_rooms_and_players.sql`), with
+row-level security on and no policies, so only the API's secret key reads or
+writes them:
 
 | Table | Columns |
 |---|---|
-| `rooms` | id, code (unique), host_player_id, status, step, step_ends_at, reveal_chain, reveal_step, created_at |
-| `players` | id, room_id, user_id (anonymous sign-in), name, seat |
+| `rooms` | id, code (unique, 4 letters without I or O), host_user_id, created_at |
+| `players` | id, room_id, user_id (anonymous sign-in), name (1–20 characters), seat (from 0), created_at; unique on (room_id, user_id) and on (room_id, seat) |
+
+The host is a user id, not a player id: the room and the host's seat are made
+in one request, and a room that pointed at a player while that player pointed
+at the room would need both rows at once.
+
+**Still a sketch**, settled at step 3:
+
+| Table | Columns |
+|---|---|
+| `rooms`, more | status, step, step_ends_at, reveal_chain, reveal_step |
 | `entries` | id, room_id, chain, step, author_player_id, kind (`text` or `drawing`), text, image_path, created_at; unique on (room_id, chain, step) |
 
 ### API
@@ -157,8 +186,10 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | Endpoint | Does | Step |
 |---|---|---|
 | `GET /health` | Answers, so the web app can show the API is up | 0 |
-| `POST /rooms` | Create a room, return its code | 2 |
-| `POST /rooms/{code}/join` | Join with a name, take a seat | 2 |
+| `GET /me` | The user id behind the token; 401 without one | 2 |
+| `POST /rooms` | Create a room with the host's name; the host takes seat 0. Returns the code and the host's seat | 2 |
+| `GET /rooms/{code}` | The room, and the asking player's seat if they have one; 404 for an unknown code | 2 |
+| `POST /rooms/{code}/join` | Join with a name, take the next seat. Joining again returns the seat already held | 2 |
 | `POST /rooms/{code}/start` | Host only, 3 players or more | 3 |
 | `POST /rooms/{code}/entries` | Submit this step's text, or ask for a drawing's upload URL | 3, 4 |
 | `POST /rooms/{code}/advance` | Move on if everyone submitted or time's up | 3 |
@@ -170,9 +201,9 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 
 | # | Step | Done when | Status |
 |---|---|---|---|
-| 0 | Skeleton: web and API both live, reading from Supabase | The live page shows a row from Supabase, fetched through the API on Railway | **In progress** |
+| 0 | Skeleton: web and API both live, reading from Supabase | The live page shows a row from Supabase, fetched through the API on Railway | **Done 10 Nov** |
 | 1 | **The canvas**, local only: pen with pressure, a small palette, three sizes, undo, clear, export PNG | I can draw with mouse, touch and pen, and pressure changes the line | **Built 10 Nov**; waits on my real pen and phone check |
-| 2 | **Rooms**: create one (code and link), join with a name, the lobby updates live | Two browsers see each other join and leave | |
+| 2 | **Rooms**: create one (code and link), join with a name, the lobby updates live | Two browsers see each other join and leave | **Passed locally 10 Nov**; live needs a push |
 | 3 | **The game, text only**: every step is text, with the rotation, timers and advance | Three browsers play a full text-only game; the rotation has unit tests | |
 | 4 | **Drawing steps**: the canvas in the draw steps, PNG to Storage, the next player sees it | A full game alternates write, draw, describe | |
 | 5 | **The reveal**: each chain step by step, the host moves it on | Every chain shows in order | |
@@ -185,7 +216,7 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | 0a | Next.js app, a plain home page | `npm run dev` shows it at localhost. **Passed 9 Nov:** the page renders, no console errors, `tsc` and ESLint clean |
 | 0b | GitHub repo, `frontend/` imported into Vercel | The same page at the live URL, redeployed on push. **Live 10 Nov** at https://www.playsketchrelay.com: `/` and `/draw` served by Vercel over HTTPS, the canvas 800 × 600, no console errors. **Passed 10 Nov:** the push of `87991f1` redeployed it; the live home page has the new API status line |
 | 0c | `backend/`: FastAPI with `GET /health`, deployed on Railway | The live page shows the API is up. **Passed 10 Nov**, in four pieces below |
-| 0d | Supabase project, one test row; the API reads it | The live page shows the row |
+| 0d | Supabase project, one test row; the API reads it | The live page shows the row. **Passed 10 Nov** with `ca79280`: the live home page reads "API: up" and "Database: Hello from Supabase" |
 
 0c, smaller:
 
@@ -203,7 +234,7 @@ FastAPI endpoints, planned; each arrives with the step that needs it.
 | 0d1 | SketchRelay's URL and secret key in `backend/.env` and Railway's Variables | `git status` never lists the key. The URL's subdomain is SketchRelay's project ref; I have two Supabase organisations, and keys from the other one point at a different database |
 | 0d2 | Table `smoke_test` with one row, row-level security on | The row in the Table Editor. With no policies, the browser's publishable key can't read it; the secret key can |
 | 0d3 | `GET /smoke` reads the row with the secret key | `localhost:8000/smoke` and `api.playsketchrelay.com/smoke` return its message. **Local passed 10 Nov:** `{"message":"Hello from Supabase"}`, after `.env` was moved from another organisation's project to SketchRelay. uvicorn reads `.env` only when a worker starts, so a key change needs a restart |
-| 0d4 | The home page shows it | The live home page shows "Database: Hello from Supabase". **Local passed 10 Nov** at `localhost:3001`; live needs SketchRelay's keys in Railway and a push |
+| 0d4 | The home page shows it | The live home page shows "Database: Hello from Supabase". **Passed 10 Nov**, local and live; `api.playsketchrelay.com/smoke` returns the row |
 
 ### Step 1, in pieces
 
@@ -227,6 +258,46 @@ quickly; I review them. The strokes live in `frontend/lib/drawing.ts`
 (plain functions, no React) and the component in `canvas.tsx`. Still mine
 to check: a real pen and a real phone.
 
+### Step 2, in pieces
+
+Rooms rest on D2, D4 and D13–D16. Claude wrote 2a–2f on 10 Nov, when I said
+to run all of step 2, and switched on anonymous sign-ins and ran the SQL in my
+Chrome; I review the diff. The two `NEXT_PUBLIC_SUPABASE_*` variables went on
+Vercel (Production, type Config) on 10 Nov; live needs only a push.
+
+**Trap on Vercel, cleaned up 10 Nov:** Vercel's Supabase integration had
+connected **supabase-usecase**, the other organisation's project, to
+sketch-relay, adding 16 `SKETCH_RELAY_*` variables (its secret key and
+database password among them) that no code read. The connection is removed
+and the variables went with it; the store itself still exists. The project's
+variables are now only `NEXT_PUBLIC_API_URL` and the two
+`NEXT_PUBLIC_SUPABASE_*`. SketchRelay is not connected through the
+integration; its two public values are set by hand.
+
+| | Piece | I should see |
+|---|---|---|
+| 2a | Anonymous sign-in in the browser: `@supabase/supabase-js`, the publishable key in `frontend/.env.local` and Vercel, anonymous sign-ins switched on in SketchRelay | The home page shows a short user id that survives a reload. **Passed 10 Nov:** "You: f68b3e62" before and after a reload, the session in localStorage, and one anonymous user in SketchRelay, not two (React runs effects twice in development; the sign-in is shared) |
+| 2b | The API checks the token (D14): `GET /me` | With the browser's token it returns the same user id; with none, 401. **Passed 10 Nov** from the browser: the token → `f68b3e62-…`; no token → 401 "Sign in first"; a made-up token → 401 "Invalid or expired token". CORS lets the `Authorization` header through |
+| 2c | Tables `rooms` and `players` (D16), row-level security on | Both in SketchRelay; the publishable key can't read them. **Passed 10 Nov:** `0001_rooms_and_players.sql` run in the SQL Editor; with rows in both tables, the secret key reads them and the publishable key gets `[]` |
+| 2d | `POST /rooms` and a Create room form: a name, then the button | I land on `/room/ABCD` with a new code, seated first, and the rows exist. **Passed 10 Nov:** room `LTQH`, "Ibukun, seat 1"; the rows hold seat 0 and the host's user id |
+| 2e | Join with a name: `POST /rooms/{code}/join`; a code typed on the home page goes to that lobby | A second browser opens the link, types a name and takes the next seat. **Passed 10 Nov:** Chrome as a second player, "Ada, seat 2", kept after a reload; `/room/ZZZZ` says "No room with that code". Five players joining at the same moment got five different seats with no gaps: a clash on a seat fails the insert, and the API tries the next |
+| 2f | The lobby lists who's here (D15) | Two browsers see each other join, and a closed tab drops off the list. **Passed 10 Nov:** a new room `YTJA`, Ada typed the code on Chrome's home page and joined; the host's list showed her as she joined. Going Back and closing her tab both removed her from the host's list within a second; going Forward brought her back in her seat, with no name form |
+
+What step 2 taught:
+
+- **`cacheComponents` is on, so `await params` must sit inside a
+  `<Suspense>`.** The page renders its shell at once and the part that reads
+  the code streams in. Without it, Next stops the route with "runtime data
+  during prerendering".
+- **The dev server only serves `localhost`.** A tab on `127.0.0.1:3001` loads
+  but never runs its scripts (Next blocks other origins from its dev
+  resources). A second player on this machine needs another browser or
+  profile; a phone on the home network would need `allowedDevOrigins`.
+- **Next keeps the page you left in the DOM, hidden.** A text read of the
+  page can return the old page's words; read the visible `<main>`.
+- **A hidden or background tab can hold a streamed page on its fallback**
+  until it's shown again: the same URL took 0.8 s in a visible browser.
+
 ---
 
 ## Not in the MVP
@@ -249,8 +320,17 @@ After the MVP, and only if the 4 December list picks them.
 - When the host leaves (MVP: the game carries on, and the next seat can move
   the reveal on).
 - Timer lengths (start at 30 s to write or describe, 90 s to draw).
-- Whether Supabase's free plan has room for a second project next to Iron
-  Canvas, or this needs its own account.
+- **Who plays when the host starts (step 3).** A seat stays in `players` after
+  its tab closes, so seats can have gaps and absent owners. Likely: the
+  players connected at the start, renumbered 0 to *n* − 1 for the rotation.
+- Joining once the game has started (step 3 adds `status`; until then
+  anyone with the code can join).
+- A cap on players per room, and two players with the same name.
+- Supabase recommends a CAPTCHA on anonymous sign-ins, against scripts making
+  users in bulk. Not for the MVP; worth it before the link goes public.
+- A private Realtime channel, so only seated players can appear in the lobby
+  (D15's cost).
+- Old rooms and anonymous users pile up; a clean-up job, after the MVP.
 - Supabase Pro ($25 a month) only if the free plan's limits bite, such as an
   idle project being paused before a demo. Its custom domain ($10 a month
   more) isn't worth it: players never see the Supabase URL, and with
